@@ -6,4 +6,10 @@ LOG_FILE="${MODEL}.log"
 rm -f "${LOG_FILE}" 2>/dev/null || true
 echo "Starting Training for model: ${MODEL}"
 
-uv run main.py --model "${MODEL}" 2>&1 | tee "${LOG_FILE}"
+# Start TensorBoard with nohup
+nohup uv run tensorboard --logdir logs/fit/ --port 8080 >/dev/null 2>&1 &
+# http://localhost:8080/
+
+# Start training with nohup
+nohup uv run main.py --model "${MODEL}" > "${LOG_FILE}" 2>&1 &
+tail -f "${LOG_FILE}"

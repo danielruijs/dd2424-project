@@ -1,6 +1,7 @@
 import kagglehub
 import os
 import json
+import datetime
 
 # Suppress TensorFlow Info messages
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = (
@@ -165,12 +166,13 @@ def create_model(model_name, vocab_size, train_dataset):
 
 
 class GenerateTextCallback(tf.keras.callbacks.Callback):
-    def __init__(self, one_step_model, start_string=".", num_generate=200):
+    def __init__(self, one_step_model, log_dir, start_string=".", num_generate=200):
         super().__init__()
         # Store the OneStep model instance (important: pass the instance, not the class)
         self.one_step_model = one_step_model
         self.start_string = start_string
         self.num_generate = num_generate
+        self.log_dir = log_dir
 
     def on_epoch_end(self, epoch, logs=None):
         print(f"\n\n--- Generating text after epoch {epoch + 1} ---")
@@ -186,7 +188,11 @@ class GenerateTextCallback(tf.keras.callbacks.Callback):
             result.append(next_char)
 
         result = tf.strings.join(result)
-        print(result[0].numpy().decode("utf-8"), "\n\n" + "_" * 80)
+        result_text = result[0].numpy().decode("utf-8")
+        print(result_text, "\n\n" + "_" * 80)
+        file_writer = tf.summary.create_file_writer(self.log_dir)
+        with file_writer.as_default():
+            tf.summary.text("Generated Text", result_text, step=epoch)
 
 
 class OneStep(tf.keras.Model):
@@ -246,6 +252,17 @@ def train(
 ):
     model = create_model(model_name, vocab_size, train_dataset)
 
+    # Create unique log directory for this run
+    log_dir = f"logs/fit/{model_name}/" + datetime.datetime.now().strftime(
+        "%Y%m%d-%H%M%S"
+    )
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(
+        log_dir=log_dir,
+        histogram_freq=1,  # Generate histograms of weights every epoch
+        write_graph=True,  # Visualize the model graph
+        update_freq="epoch",  # Update logs at the end of each epoch
+    )
+
     one_step_model_for_callback = OneStep(model, chars_from_ids, ids_from_chars)
 
     checkpoint_dir = "./training_checkpoints"
@@ -254,16 +271,18 @@ def train(
         filepath=checkpoint_prefix, save_weights_only=True
     )
 
-    generate_text_callback = GenerateTextCallback(one_step_model_for_callback)
+    generate_text_callback = GenerateTextCallback(
+        one_step_model_for_callback, log_dir=log_dir
+    )
 
     history = model.fit(
         train_dataset,
         validation_data=val_dataset,
         epochs=EPOCHS,
-        callbacks=[checkpoint_callback, generate_text_callback],
+        callbacks=[checkpoint_callback, generate_text_callback, tensorboard_callback],
     )
 
-    return model, history
+    return model, history, log_dir
 
 
 def main():
@@ -287,7 +306,7 @@ def main():
         chars_from_ids,
     ) = create_dataset(text)
 
-    model, history = train(
+    model, history, log_dir = train(
         args.model,
         train_dataset,
         val_dataset,
@@ -312,7 +331,11 @@ def main():
         result.append(next_char)
 
     result = tf.strings.join(result)
-    print(result[0].numpy().decode("utf-8"), "\n\n" + "_" * 80)
+    result_text = result[0].numpy().decode("utf-8")
+    print(result_text, "\n\n" + "_" * 80)
+    file_writer = tf.summary.create_file_writer(log_dir)
+    with file_writer.as_default():
+        tf.summary.text("Final Generated Text", result_text, step=0)
 
 
 if __name__ == "__main__":
