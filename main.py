@@ -8,6 +8,8 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = (
 )
 import tensorflow as tf
 from tensorflow import keras
+import argparse
+from models import BaseRNN, LSTM, LSTM2
 
 BATCH_SIZE = 64
 BUFFER_SIZE = 10000
@@ -15,6 +17,7 @@ EPOCHS = 2
 SEQ_LENGTH = 100
 EMBEDDING_DIM = 256
 RNN_UNITS = 1024
+LSTM_UNITS = 1024
 
 
 def load_text(kaggle_url):
@@ -42,10 +45,6 @@ def load_text(kaggle_url):
     print("Harry Potter books loaded. Total characters: ", len(text))
 
     return text
-
-
-# def text_from_ids(ids, chars_from_ids):
-#     return tf.strings.reduce_join(chars_from_ids(ids), axis=-1).numpy().decode("utf-8")
 
 
 def split_input_target(sequence):
@@ -143,8 +142,13 @@ class Model(keras.Model):
             return x
 
 
-def create_model(vocab_size, train_dataset):
-    model = Model(vocab_size, EMBEDDING_DIM, RNN_UNITS)
+def create_model(model_name, vocab_size, train_dataset):
+    if model_name == "rnn":
+        model = BaseRNN(vocab_size, EMBEDDING_DIM, RNN_UNITS)
+    elif model_name == "lstm":
+        model = LSTM(vocab_size, EMBEDDING_DIM, LSTM_UNITS)
+    elif model_name == "lstm2":
+        model = LSTM2(vocab_size, EMBEDDING_DIM, LSTM_UNITS)
 
     for input_example_batch, target_example_batch in train_dataset.take(1):
         example_batch_predictions = model(input_example_batch)
@@ -233,13 +237,14 @@ class OneStep(tf.keras.Model):
 
 
 def train(
+    model_name,
     train_dataset,
     val_dataset,
     vocab_size,
     ids_from_chars,
     chars_from_ids,
 ):
-    model = create_model(vocab_size, train_dataset)
+    model = create_model(model_name, vocab_size, train_dataset)
 
     one_step_model_for_callback = OneStep(model, chars_from_ids, ids_from_chars)
 
@@ -262,6 +267,16 @@ def train(
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="rnn",
+        choices=["rnn", "lstm", "lstm2"],
+        help="Model architecture to use",
+    )
+    args = parser.parse_args()
+
     text = load_text("shubhammaindola/harry-potter-books")
     (
         train_dataset,
@@ -273,6 +288,7 @@ def main():
     ) = create_dataset(text)
 
     model, history = train(
+        args.model,
         train_dataset,
         val_dataset,
         vocab_size,
