@@ -6,5 +6,6 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "kagglehub>=0.3.12",
+    "matplotlib>=3.10.1",
     "tensorflow>=2.19.0",
 ]
