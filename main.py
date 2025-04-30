@@ -14,7 +14,7 @@ from models import BaseRNN, LSTM, LSTM2
 
 BATCH_SIZE = 64
 BUFFER_SIZE = 10000
-EPOCHS = 2
+EPOCHS = 20
 SEQ_LENGTH = 100
 EMBEDDING_DIM = 256
 RNN_UNITS = 1024
@@ -249,6 +249,7 @@ def train(
     vocab_size,
     ids_from_chars,
     chars_from_ids,
+    hyperparameter_tuning=False,
 ):
     model = create_model(model_name, vocab_size, train_dataset)
 
@@ -275,11 +276,15 @@ def train(
         one_step_model_for_callback, log_dir=log_dir
     )
 
+    callbacks = []
+    if not hyperparameter_tuning:
+        callbacks = [tensorboard_callback, checkpoint_callback, generate_text_callback]
+
     history = model.fit(
         train_dataset,
         validation_data=val_dataset,
         epochs=EPOCHS,
-        callbacks=[checkpoint_callback, generate_text_callback, tensorboard_callback],
+        callbacks=callbacks,
     )
 
     return model, history, log_dir
@@ -317,9 +322,6 @@ def main():
 
     test_loss = model.evaluate(test_dataset)
     print(f"\nTest Loss: {test_loss}")
-
-    with open("training_history.json", "w") as f:
-        json.dump(history.history, f)
 
     one_step_model = OneStep(model, chars_from_ids, ids_from_chars)
     states = None

@@ -174,3 +174,5 @@ cython_debug/
 
 training_checkpoints
 training_history.json
+logs
+*.log
