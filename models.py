@@ -3,9 +3,9 @@ from tensorflow import keras
 
 
 class BaseRNN(keras.Model):
-    def __init__(self, vocab_size, embedding_dim, rnn_units):
+    def __init__(self, vocab_size, rnn_units):
         super().__init__()
-        self.embedding = keras.layers.Embedding(vocab_size, embedding_dim)
+        self.embedding = keras.layers.Embedding(vocab_size, vocab_size)
         self.rnn = keras.layers.SimpleRNN(
             rnn_units, return_sequences=True, return_state=True
         )
@@ -27,9 +27,9 @@ class BaseRNN(keras.Model):
 
 
 class LSTM(keras.Model):
-    def __init__(self, vocab_size, embedding_dim, lstm_units):
+    def __init__(self, vocab_size, lstm_units):
         super().__init__()
-        self.embedding = keras.layers.Embedding(vocab_size, embedding_dim)
+        self.embedding = keras.layers.Embedding(vocab_size, vocab_size)
         self.lstm = keras.layers.LSTM(
             lstm_units, return_sequences=True, return_state=True
         )
@@ -55,9 +55,9 @@ class LSTM(keras.Model):
 
 
 class LSTM2(keras.Model):
-    def __init__(self, vocab_size, embedding_dim, lstm_units):
+    def __init__(self, vocab_size, lstm_units):
         super().__init__()
-        self.embedding = keras.layers.Embedding(vocab_size, embedding_dim)
+        self.embedding = keras.layers.Embedding(vocab_size, vocab_size)
         self.lstm1 = keras.layers.LSTM(
             lstm_units, return_sequences=True, return_state=True
         )
