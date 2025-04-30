@@ -2,7 +2,7 @@ import os
 
 # Suppress TensorFlow Info messages
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = (
-    "1"  # 0: all messages, 1: filter out INFO messages, 2: filter out WARNING messages, 3: filter out ERROR messages
+    "3"  # 0: all messages, 1: filter out INFO messages, 2: filter out WARNING messages, 3: filter out ERROR messages
 )
 import tensorflow as tf
 from tensorboard.plugins.hparams import api as hp
@@ -27,7 +27,6 @@ def run(
     chars_from_ids,
     ngrams,
 ):
-    print(f"\nStarting run with hparams: {hparams}")
     model, _, _, best_checkpoint_filepath = train(
         hparams[HP_MODEL],
         train_dataset,
@@ -35,6 +34,7 @@ def run(
         vocab_size,
         ids_from_chars,
         chars_from_ids,
+        ngrams,
         hyperparameter_tuning=True,
         learning_rate=hparams[HP_LR],
         hidden_units=hparams[HP_HIDDEN_UNITS],
@@ -85,7 +85,7 @@ def run(
 
 
 def main():
-    text, _, ngrams = load_text("shubhammaindola/harry-potter-books")
+    text, _, ngrams = load_text("shubhammaindola/harry-potter-books", verbose=False)
     metrics = [hp.Metric(f"{ngram_size}-gram %") for ngram_size in ngrams.keys()]
     metrics.append(hp.Metric(METRIC_TRAIN_LOSS, display_name="train_loss"))
     metrics.append(hp.Metric(METRIC_VAL_LOSS, display_name="val_loss"))
@@ -106,7 +106,7 @@ def main():
             vocab_size,
             ids_from_chars,
             chars_from_ids,
-        ) = create_dataset(text, batch_size=batch_size)
+        ) = create_dataset(text, batch_size=batch_size, verbose=False)
         for model_name in HP_MODEL.domain.values:
             for hidden_units in HP_HIDDEN_UNITS.domain.values:
                 for learning_rate in HP_LR.domain.values:

@@ -5,7 +5,7 @@ import datetime
 
 # Suppress TensorFlow Info messages
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = (
-    "1"  # 0: all messages, 1: filter out INFO messages, 2: filter out WARNING messages, 3: filter out ERROR messages
+    "3"  # 0: all messages, 1: filter out INFO messages, 2: filter out WARNING messages, 3: filter out ERROR messages
 )
 import tensorflow as tf
 from tensorflow import keras
@@ -21,11 +21,12 @@ LR = 0.001
 HIDDEN_UNITS = 1024
 
 
-def load_text(kaggle_url):
+def load_text(kaggle_url, verbose=True):
     # Download latest version
     path = kagglehub.dataset_download(kaggle_url)
 
-    print("Harry Potter books downloaded to: ", path)
+    if verbose:
+        print("Harry Potter books downloaded to: ", path)
 
     # List all text files
     file_paths = [
@@ -43,13 +44,15 @@ def load_text(kaggle_url):
     # Concatenate all texts into a single string
     text = "\n".join(texts)
 
-    print("Harry Potter books loaded. Total characters: ", len(text))
+    if verbose:
+        print("Harry Potter books loaded. Total characters: ", len(text))
 
     pattern = r"\b[a-zA-Z\-'’]+\b"
     all_words = re.findall(pattern, text)
-    print("Total words: ", len(all_words))
     unique_words = set(all_words)
-    print("Unique words: ", len(unique_words))
+    if verbose:
+        print("Total words: ", len(all_words))
+        print("Unique words: ", len(unique_words))
 
     ngrams = {
         1: set(tf.strings.ngrams(tf.constant([all_words]), 1).numpy()[0]),
@@ -87,7 +90,7 @@ def split_input_target(sequence):
     return input_text, target_text
 
 
-def create_dataset(text, train_split=0.8, val_split=0.1, batch_size=64):
+def create_dataset(text, train_split=0.8, val_split=0.1, batch_size=64, verbose=True):
     """
     Splits the text into training, validation, and test datasets.
     train_split: proportion of data to use for training.
@@ -102,9 +105,10 @@ def create_dataset(text, train_split=0.8, val_split=0.1, batch_size=64):
     val_text = text[train_end:val_end]
     test_text = text[val_end:]
 
-    print(f"Train length: {len(train_text)}")
-    print(f"Val length: {len(val_text)}")
-    print(f"Test length: {len(test_text)}")
+    if verbose:
+        print(f"Train length: {len(train_text)}")
+        print(f"Val length: {len(val_text)}")
+        print(f"Test length: {len(test_text)}")
 
     vocab = sorted(set(text))
 
@@ -140,7 +144,8 @@ def create_dataset(text, train_split=0.8, val_split=0.1, batch_size=64):
     )
 
     vocab_size = len(ids_from_chars.get_vocabulary())
-    print(f"Vocabulary size: {vocab_size}")
+    if verbose:
+        print(f"Vocabulary size: {vocab_size}")
 
     return (
         train_dataset,
@@ -152,7 +157,7 @@ def create_dataset(text, train_split=0.8, val_split=0.1, batch_size=64):
     )
 
 
-def create_model(model_name, vocab_size, train_dataset, learning_rate, hidden_units):
+def create_model(model_name, vocab_size, train_dataset, learning_rate, hidden_units, verbose=True):
     if model_name == "rnn":
         model = BaseRNN(vocab_size, hidden_units)
     elif model_name == "lstm":
@@ -160,14 +165,15 @@ def create_model(model_name, vocab_size, train_dataset, learning_rate, hidden_un
     elif model_name == "lstm2":
         model = LSTM2(vocab_size, hidden_units)
 
-    for input_example_batch, target_example_batch in train_dataset.take(1):
-        example_batch_predictions = model(input_example_batch)
-        print(
-            example_batch_predictions.shape,
-            "# (batch_size, sequence_length, vocab_size)",
-        )
+    if verbose:
+        for input_example_batch, target_example_batch in train_dataset.take(1):
+            example_batch_predictions = model(input_example_batch)
+            print(
+                example_batch_predictions.shape,
+                "# (batch_size, sequence_length, vocab_size)",
+            )
 
-    model.summary()
+        model.summary()
 
     loss = tf.losses.SparseCategoricalCrossentropy(from_logits=True)
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
@@ -176,13 +182,14 @@ def create_model(model_name, vocab_size, train_dataset, learning_rate, hidden_un
 
 
 class GenerateTextCallback(tf.keras.callbacks.Callback):
-    def __init__(self, one_step_model, log_dir, start_string=".", num_generate=200):
+    def __init__(self, one_step_model, log_dir, ngrams, start_string=".", num_generate=300):
         super().__init__()
         # Store the OneStep model instance (important: pass the instance, not the class)
         self.one_step_model = one_step_model
         self.start_string = start_string
         self.num_generate = num_generate
         self.log_dir = log_dir
+        self.ngrams = ngrams
 
     def on_epoch_end(self, epoch, logs=None):
         print(f"\n\n--- Generating text after epoch {epoch + 1} ---")
@@ -203,6 +210,15 @@ class GenerateTextCallback(tf.keras.callbacks.Callback):
         file_writer = tf.summary.create_file_writer(self.log_dir)
         with file_writer.as_default():
             tf.summary.text("Generated Text", result_text, step=epoch)
+
+        percentage_ngrams_final = percentage_ngrams(result_text, self.ngrams)
+        with file_writer.as_default():
+            for ngram_size, pct in percentage_ngrams_final.items():
+                tf.summary.scalar(
+                    f"{ngram_size}-gram %",
+                    pct,
+                    step=epoch,
+                )
 
 
 class OneStep(tf.keras.Model):
@@ -259,6 +275,7 @@ def train(
     vocab_size,
     ids_from_chars,
     chars_from_ids,
+    ngrams,
     hyperparameter_tuning=False,
     learning_rate=0.001,
     hidden_units=1024,
@@ -269,6 +286,7 @@ def train(
         train_dataset,
         learning_rate=learning_rate,
         hidden_units=hidden_units,
+        verbose=not hyperparameter_tuning
     )
 
     # Create unique log directory for this run
@@ -297,7 +315,7 @@ def train(
     )
 
     generate_text_callback = GenerateTextCallback(
-        one_step_model_for_callback, log_dir=log_dir
+        one_step_model_for_callback, log_dir=log_dir, ngrams=ngrams
     )
 
     callbacks = [checkpoint_callback]
@@ -310,6 +328,7 @@ def train(
         validation_data=val_dataset,
         epochs=EPOCHS,
         callbacks=callbacks,
+        verbose=1 if not hyperparameter_tuning else 2,
     )
 
     return model, history, log_dir, best_checkpoint_filepath
@@ -344,6 +363,7 @@ def main():
         vocab_size,
         ids_from_chars,
         chars_from_ids,
+        ngrams,
         learning_rate=LR,
         hidden_units=HIDDEN_UNITS,
     )
@@ -384,13 +404,13 @@ def main():
     with file_writer.as_default():
         for ngram_size, pct in percentage_ngrams_final.items():
             tf.summary.scalar(
-                f"Final sample correct {ngram_size}-gram percentage",
+                f"Final sample {ngram_size}-gram %",
                 pct,
                 step=0,
             )
-        tf.summary.scalar("Evaluation/Train Loss (Best Weights)", train_loss, step=0)
-        tf.summary.scalar("Evaluation/Validation Loss (Best Weights)", val_loss, step=0)
-        tf.summary.scalar("Evaluation/Test Loss (Best Weights)", test_loss, step=0)
+        tf.summary.scalar("Final Train Loss", train_loss, step=0)
+        tf.summary.scalar("Final Validation Loss", val_loss, step=0)
+        tf.summary.scalar("Final Test Loss", test_loss, step=0)
 
 
 if __name__ == "__main__":
