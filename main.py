@@ -165,6 +165,11 @@ def create_model(model_name, vocab_size, train_dataset, learning_rate, hidden_un
     elif model_name == "lstm2":
         model = LSTM2(vocab_size, hidden_units)
 
+
+    loss = tf.losses.SparseCategoricalCrossentropy(from_logits=True)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+    model.compile(optimizer=optimizer, loss=loss)
+    
     if verbose:
         for input_example_batch, target_example_batch in train_dataset.take(1):
             example_batch_predictions = model(input_example_batch)
@@ -174,10 +179,6 @@ def create_model(model_name, vocab_size, train_dataset, learning_rate, hidden_un
             )
 
         model.summary()
-
-    loss = tf.losses.SparseCategoricalCrossentropy(from_logits=True)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    model.compile(optimizer=optimizer, loss=loss)
     return model
 
 

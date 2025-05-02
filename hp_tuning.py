@@ -8,8 +8,8 @@ import tensorflow as tf
 from tensorboard.plugins.hparams import api as hp
 from main import load_text, create_dataset, train, OneStep, percentage_ngrams
 
-HP_HIDDEN_UNITS = hp.HParam("hidden_units", hp.Discrete([512, 1024, 2048]))
-HP_LR = hp.HParam("learning_rate", hp.Discrete([0.001, 0.0001, 0.01]))
+HP_HIDDEN_UNITS = hp.HParam("hidden_units", hp.Discrete([256, 512, 768, 1024]))
+HP_LR = hp.HParam("learning_rate", hp.Discrete([0.01, 0.001, 0.0001]))
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32, 64, 128]))
 HP_MODEL = hp.HParam("model", hp.Discrete(["rnn", "lstm", "lstm2"]))
 
@@ -49,9 +49,9 @@ def run(
             f"Error loading weights: {e}. Proceeding with the final weights from training."
         )
 
-    train_loss = model.evaluate(train_dataset)
+    train_loss = model.evaluate(train_dataset, verbose=2)
     print(f"Train loss: {train_loss}")
-    val_loss = model.evaluate(val_dataset)
+    val_loss = model.evaluate(val_dataset, verbose=2)
     print(f"Validation loss: {val_loss}")
 
     one_step_model = OneStep(model, chars_from_ids, ids_from_chars)
