@@ -10,7 +10,8 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = (
 import tensorflow as tf
 from tensorflow import keras
 import argparse
-from models import BaseRNN, LSTM, LSTM2
+from models import BaseRNN, LSTM, LSTM2, OneStep
+from transformer_model import Transformer, TransformerOneStep
 import re
 
 BATCH_SIZE = 64
@@ -157,19 +158,24 @@ def create_dataset(text, train_split=0.8, val_split=0.1, batch_size=64, verbose=
     )
 
 
-def create_model(model_name, vocab_size, train_dataset, learning_rate, hidden_units, verbose=True):
+def create_model(
+    model_name, vocab_size, train_dataset, learning_rate, hidden_units, verbose=True
+):
     if model_name == "rnn":
         model = BaseRNN(vocab_size, hidden_units)
     elif model_name == "lstm":
         model = LSTM(vocab_size, hidden_units)
     elif model_name == "lstm2":
         model = LSTM2(vocab_size, hidden_units)
-
+    elif model_name == "transformer":
+        model = Transformer(
+            vocab_size=vocab_size,
+        )
 
     loss = tf.losses.SparseCategoricalCrossentropy(from_logits=True)
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
     model.compile(optimizer=optimizer, loss=loss)
-    
+
     if verbose:
         for input_example_batch, target_example_batch in train_dataset.take(1):
             example_batch_predictions = model(input_example_batch)
@@ -183,7 +189,9 @@ def create_model(model_name, vocab_size, train_dataset, learning_rate, hidden_un
 
 
 class GenerateTextCallback(tf.keras.callbacks.Callback):
-    def __init__(self, one_step_model, log_dir, ngrams, start_string=".", num_generate=300):
+    def __init__(
+        self, one_step_model, log_dir, ngrams, start_string=".", num_generate=300
+    ):
         super().__init__()
         # Store the OneStep model instance (important: pass the instance, not the class)
         self.one_step_model = one_step_model
@@ -222,51 +230,42 @@ class GenerateTextCallback(tf.keras.callbacks.Callback):
                 )
 
 
-class OneStep(tf.keras.Model):
-    def __init__(self, model, chars_from_ids, ids_from_chars, temperature=1.0):
+class GenerateTextCallbackTransformer(tf.keras.callbacks.Callback):
+    def __init__(
+        self, one_step_model, log_dir, ngrams, start_string=".", num_generate=300
+    ):
         super().__init__()
-        self.temperature = temperature
-        self.model = model
-        self.chars_from_ids = chars_from_ids
-        self.ids_from_chars = ids_from_chars
+        # Store the OneStep model instance (important: pass the instance, not the class)
+        self.one_step_model = one_step_model
+        self.start_string = start_string
+        self.num_generate = num_generate
+        self.log_dir = log_dir
+        self.ngrams = ngrams
 
-        # Create a mask to prevent "[UNK]" from being generated.
-        skip_ids = self.ids_from_chars(["[UNK]"])[:, None]
-        sparse_mask = tf.SparseTensor(
-            # Put a -inf at each bad index.
-            values=[-float("inf")] * len(skip_ids),
-            indices=skip_ids,
-            # Match the shape to the vocabulary
-            dense_shape=[len(ids_from_chars.get_vocabulary())],
-        )
-        self.prediction_mask = tf.sparse.to_dense(sparse_mask)
+    def on_epoch_end(self, epoch, logs=None):
+        print(f"\n\n--- Generating text after epoch {epoch + 1} ---")
+        # Use the start_string provided during initialization
+        result_text = self.start_string
 
-    @tf.function
-    def generate_one_step(self, inputs, states=None):
-        # Convert strings to token IDs.
-        input_chars = tf.strings.unicode_split(inputs, "UTF-8")
-        input_ids = self.ids_from_chars(input_chars).to_tensor()
+        for _ in range(self.num_generate):
+            generated_seq = tf.constant([result_text])
+            next_char = self.one_step_model.generate_one_step(generated_seq)
+            next_char_str = next_char[0].numpy().decode("utf-8")
+            result_text += next_char_str
 
-        # Run the model.
-        # predicted_logits.shape is [batch, char, next_char_logits]
-        predicted_logits, states = self.model(
-            inputs=input_ids, states=states, return_state=True
-        )
-        # Only use the last prediction.
-        predicted_logits = predicted_logits[:, -1, :]
-        predicted_logits = predicted_logits / self.temperature
-        # Apply the prediction mask: prevent "[UNK]" from being generated.
-        predicted_logits = predicted_logits + self.prediction_mask
+        print(result_text, "\n\n" + "_" * 80)
+        file_writer = tf.summary.create_file_writer(self.log_dir)
+        with file_writer.as_default():
+            tf.summary.text("Generated Text", result_text, step=epoch)
 
-        # Sample the output logits to generate token IDs.
-        predicted_ids = tf.random.categorical(predicted_logits, num_samples=1)
-        predicted_ids = tf.squeeze(predicted_ids, axis=-1)
-
-        # Convert from token ids to characters
-        predicted_chars = self.chars_from_ids(predicted_ids)
-
-        # Return the characters and model state.
-        return predicted_chars, states
+        percentage_ngrams_final = percentage_ngrams(result_text, self.ngrams)
+        with file_writer.as_default():
+            for ngram_size, pct in percentage_ngrams_final.items():
+                tf.summary.scalar(
+                    f"{ngram_size}-gram %",
+                    pct,
+                    step=epoch,
+                )
 
 
 def train(
@@ -287,7 +286,7 @@ def train(
         train_dataset,
         learning_rate=learning_rate,
         hidden_units=hidden_units,
-        verbose=not hyperparameter_tuning
+        verbose=not hyperparameter_tuning,
     )
 
     # Create unique log directory for this run
@@ -301,7 +300,12 @@ def train(
         update_freq="epoch",  # Update logs at the end of each epoch
     )
 
-    one_step_model_for_callback = OneStep(model, chars_from_ids, ids_from_chars)
+    if model_name == "transformer":
+        one_step_model_for_callback = TransformerOneStep(
+            model, chars_from_ids, ids_from_chars
+        )
+    else:
+        one_step_model_for_callback = OneStep(model, chars_from_ids, ids_from_chars)
 
     checkpoint_dir = "./training_checkpoints"
     best_checkpoint_filepath = os.path.join(
@@ -315,9 +319,14 @@ def train(
         save_best_only=True,
     )
 
-    generate_text_callback = GenerateTextCallback(
-        one_step_model_for_callback, log_dir=log_dir, ngrams=ngrams
-    )
+    if model_name == "transformer":
+        generate_text_callback = GenerateTextCallbackTransformer(
+            one_step_model_for_callback, log_dir=log_dir, ngrams=ngrams
+        )
+    else:
+        generate_text_callback = GenerateTextCallback(
+            one_step_model_for_callback, log_dir=log_dir, ngrams=ngrams
+        )
 
     callbacks = [checkpoint_callback]
     if not hyperparameter_tuning:
@@ -341,7 +350,7 @@ def main():
         "--model",
         type=str,
         default="rnn",
-        choices=["rnn", "lstm", "lstm2"],
+        choices=["rnn", "lstm", "lstm2", "transformer"],
         help="Model architecture to use",
     )
     args = parser.parse_args()
@@ -385,17 +394,29 @@ def main():
     test_loss = model.evaluate(test_dataset)
     print(f"\nTest Loss: {test_loss}")
 
-    one_step_model = OneStep(model, chars_from_ids, ids_from_chars)
-    states = None
-    next_char = tf.constant(["."])
-    result = [next_char]
+    if args.model == "transformer":
+        result_text = "."
+        one_step_model = TransformerOneStep(model, chars_from_ids, ids_from_chars)
 
-    for _ in range(1000):
-        next_char, states = one_step_model.generate_one_step(next_char, states=states)
-        result.append(next_char)
+        for _ in range(1000):
+            generated_seq = tf.constant([result_text])
+            next_char = one_step_model.generate_one_step(generated_seq)
+            next_char_str = next_char[0].numpy().decode("utf-8")
+            result_text += next_char_str
+    else:
+        one_step_model = OneStep(model, chars_from_ids, ids_from_chars)
+        states = None
+        next_char = tf.constant(["."])
+        result = [next_char]
 
-    result = tf.strings.join(result)
-    result_text = result[0].numpy().decode("utf-8")
+        for _ in range(1000):
+            next_char, states = one_step_model.generate_one_step(
+                next_char, states=states
+            )
+            result.append(next_char)
+
+        result = tf.strings.join(result)
+        result_text = result[0].numpy().decode("utf-8")
     print(result_text, "\n\n" + "_" * 80)
     file_writer = tf.summary.create_file_writer(log_dir)
     with file_writer.as_default():
