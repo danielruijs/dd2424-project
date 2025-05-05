@@ -9,18 +9,25 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = (
 )
 import tensorflow as tf
 from tensorflow import keras
+from keras import mixed_precision
 import argparse
 from models import BaseRNN, LSTM, LSTM2, OneStep
 from transformer_model import Transformer, TransformerOneStep
 import re
 
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 BUFFER_SIZE = 10000
 EPOCHS = 20
-SEQ_LENGTH = 100
+SEQ_LENGTH = 300
 LR = 0.001
 HIDDEN_UNITS = 1024
+# For transformer
+NUM_LAYERS = 2
+D_MODEL = 512
+DFF = 2048
+NUM_HEADS = 12
 
+mixed_precision.set_global_policy('float32')
 
 def load_text(kaggle_url, verbose=True):
     # Download latest version
@@ -91,7 +98,7 @@ def split_input_target(sequence):
     return input_text, target_text
 
 
-def create_dataset(text, train_split=0.8, val_split=0.1, batch_size=64, verbose=True):
+def create_dataset(text, train_split=0.8, val_split=0.1, batch_size=32, seq_length=100, verbose=True):
     """
     Splits the text into training, validation, and test datasets.
     train_split: proportion of data to use for training.
@@ -124,7 +131,7 @@ def create_dataset(text, train_split=0.8, val_split=0.1, batch_size=64, verbose=
         chars = tf.strings.unicode_split(text, input_encoding="UTF-8")
         ids = ids_from_chars(chars)
         ids_dataset = tf.data.Dataset.from_tensor_slices(ids)
-        sequences = ids_dataset.batch(SEQ_LENGTH + 1, drop_remainder=True)
+        sequences = ids_dataset.batch(seq_length + 1, drop_remainder=True)
         dataset = sequences.map(split_input_target)
         return dataset
 
@@ -159,7 +166,7 @@ def create_dataset(text, train_split=0.8, val_split=0.1, batch_size=64, verbose=
 
 
 def create_model(
-    model_name, vocab_size, train_dataset, learning_rate, hidden_units, verbose=True
+    model_name, vocab_size, train_dataset, learning_rate, hidden_units, num_layers, d_model, dff, num_heads, verbose=True
 ):
     if model_name == "rnn":
         model = BaseRNN(vocab_size, hidden_units)
@@ -169,7 +176,7 @@ def create_model(
         model = LSTM2(vocab_size, hidden_units)
     elif model_name == "transformer":
         model = Transformer(
-            vocab_size=vocab_size,
+            vocab_size, num_layers, d_model, dff, num_heads
         )
 
     loss = tf.losses.SparseCategoricalCrossentropy(from_logits=True)
@@ -232,7 +239,7 @@ class GenerateTextCallback(tf.keras.callbacks.Callback):
 
 class GenerateTextCallbackTransformer(tf.keras.callbacks.Callback):
     def __init__(
-        self, one_step_model, log_dir, ngrams, start_string=".", num_generate=300
+        self, one_step_model, log_dir, ngrams, seq_length, start_string=".", num_generate=300
     ):
         super().__init__()
         # Store the OneStep model instance (important: pass the instance, not the class)
@@ -241,6 +248,7 @@ class GenerateTextCallbackTransformer(tf.keras.callbacks.Callback):
         self.num_generate = num_generate
         self.log_dir = log_dir
         self.ngrams = ngrams
+        self.seq_length = seq_length
 
     def on_epoch_end(self, epoch, logs=None):
         print(f"\n\n--- Generating text after epoch {epoch + 1} ---")
@@ -249,7 +257,12 @@ class GenerateTextCallbackTransformer(tf.keras.callbacks.Callback):
 
         for _ in range(self.num_generate):
             generated_seq = tf.constant([result_text])
-            next_char = self.one_step_model.generate_one_step(generated_seq)
+            if len(result_text) > self.seq_length:
+                input_text = result_text[-self.seq_length:]
+                input_seq = tf.constant([input_text])
+            else:
+                input_seq = generated_seq
+            next_char = self.one_step_model.generate_one_step(input_seq)
             next_char_str = next_char[0].numpy().decode("utf-8")
             result_text += next_char_str
 
@@ -276,9 +289,14 @@ def train(
     ids_from_chars,
     chars_from_ids,
     ngrams,
+    seq_length=100,
     hyperparameter_tuning=False,
     learning_rate=0.001,
     hidden_units=1024,
+    num_layers=1, 
+    d_model=512,
+    dff=2048, 
+    num_heads=8,
 ):
     model = create_model(
         model_name,
@@ -286,6 +304,10 @@ def train(
         train_dataset,
         learning_rate=learning_rate,
         hidden_units=hidden_units,
+        num_layers=num_layers, 
+        d_model=d_model, 
+        dff=dff, 
+        num_heads=num_heads,
         verbose=not hyperparameter_tuning,
     )
 
@@ -321,7 +343,7 @@ def train(
 
     if model_name == "transformer":
         generate_text_callback = GenerateTextCallbackTransformer(
-            one_step_model_for_callback, log_dir=log_dir, ngrams=ngrams
+            one_step_model_for_callback, log_dir=log_dir, ngrams=ngrams, seq_length=seq_length
         )
     else:
         generate_text_callback = GenerateTextCallback(
@@ -374,8 +396,13 @@ def main():
         ids_from_chars,
         chars_from_ids,
         ngrams,
+        seq_length=SEQ_LENGTH,
         learning_rate=LR,
         hidden_units=HIDDEN_UNITS,
+        num_layers=NUM_LAYERS,  # For transformer
+        d_model=D_MODEL,  # For transformer
+        dff=DFF,  # For transformer
+        num_heads=NUM_HEADS,  # For transformer
     )
 
     print(f"\nLoading best weights from: {best_checkpoint_filepath}")
@@ -400,7 +427,12 @@ def main():
 
         for _ in range(1000):
             generated_seq = tf.constant([result_text])
-            next_char = one_step_model.generate_one_step(generated_seq)
+            if len(result_text) > SEQ_LENGTH:
+                input_text = result_text[-SEQ_LENGTH:]
+                input_seq = tf.constant([input_text])
+            else:
+                input_seq = generated_seq
+            next_char = one_step_model.generate_one_step(input_seq)
             next_char_str = next_char[0].numpy().decode("utf-8")
             result_text += next_char_str
     else:
