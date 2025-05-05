@@ -28,8 +28,8 @@ class PositionalEmbedding(keras.layers.Layer):
     def call(self, x):
         length = tf.shape(x)[1]
         x = self.embedding(x)
-        x *= tf.math.sqrt(tf.cast(self.d_model, tf.float32))
-        x = x + self.pos_encoding[tf.newaxis, :length, :]
+        x *= tf.math.sqrt(tf.cast(self.d_model, x.dtype))
+        x = x + tf.cast(self.pos_encoding[tf.newaxis, :length, :], x.dtype)
         return x
 
 
@@ -179,7 +179,7 @@ class TransformerOneStep(keras.Model):
         predicted_logits = predicted_logits[:, -1, :]
         predicted_logits = predicted_logits / self.temperature
         # Apply the prediction mask: prevent "[UNK]" from being generated.
-        predicted_logits = predicted_logits + self.prediction_mask
+        predicted_logits = predicted_logits + tf.cast(self.prediction_mask, predicted_logits.dtype)
 
         # Sample the output logits to generate token IDs.
         predicted_ids = tf.random.categorical(predicted_logits, num_samples=1)
