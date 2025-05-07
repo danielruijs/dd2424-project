@@ -20,9 +20,9 @@ from nltk.tokenize import RegexpTokenizer
 BATCH_SIZE = 64
 LR = 0.001
 HIDDEN_UNITS = 1024
-SEQ_LENGTH = 100
+SEQ_LENGTH = 300
 # For transformer
-NUM_LAYERS = 1
+NUM_LAYERS = 2
 DFF = 1024
 NUM_HEADS = 12
 
