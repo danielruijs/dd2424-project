@@ -78,7 +78,7 @@ def word2vec_model(vocab_size, embedding_dim=100):
 
 
 def main():
-    text, _, _ = load_text("shubhammaindola/harry-potter-books")
+    text, _, _, _ = load_text("shubhammaindola/harry-potter-books")
     vocab_size, skip_grams, label = tokenize_text(text)
     model = word2vec_model(vocab_size)
     targets, contexts = zip(*skip_grams)
