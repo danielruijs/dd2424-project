@@ -17,16 +17,17 @@ import pickle
 import numpy as np
 from nltk.tokenize import RegexpTokenizer
 
-BATCH_SIZE = 32
-BUFFER_SIZE = 10000
-EPOCHS = 20
-SEQ_LENGTH = 300
+BATCH_SIZE = 64
 LR = 0.001
 HIDDEN_UNITS = 1024
+SEQ_LENGTH = 100
 # For transformer
 NUM_LAYERS = 1
 DFF = 1024
-NUM_HEADS = 4
+NUM_HEADS = 12
+
+EPOCHS = 20
+BUFFER_SIZE = 10000
 
 mixed_precision.set_global_policy("float32")
 
@@ -196,6 +197,19 @@ def create_model(
     return model
 
 
+def join_words(words):
+    text = " ".join(words)
+
+    # Remove spaces before punctuation
+    text = re.sub(r"\s+([.,!?;:])", r"\1", text)
+
+    # Fix spaces around quotation marks
+    text = re.sub(r'\s+([“”"])', r"\1", text)  # remove space before quotes
+    text = re.sub(r'([“”"])\s+', r"\1", text)  # remove space after quotes
+
+    return text
+
+
 class GenerateTextCallback(tf.keras.callbacks.Callback):
     def __init__(
         self,
@@ -204,7 +218,7 @@ class GenerateTextCallback(tf.keras.callbacks.Callback):
         ngrams,
         tokenizer,
         start_string=".",
-        num_generate=300,
+        num_generate=1000,
     ):
         super().__init__()
         # Store the OneStep model instance (important: pass the instance, not the class)
@@ -237,7 +251,7 @@ class GenerateTextCallback(tf.keras.callbacks.Callback):
             words.append(self.idx2word[int(token_id)])
 
         # Join words to form the generated text
-        result_text = " ".join(words)
+        result_text = join_words(words)
         print(result_text, "\n\n" + "_" * 80)
         file_writer = tf.summary.create_file_writer(self.log_dir)
         with file_writer.as_default():
@@ -262,7 +276,7 @@ class GenerateTextCallbackTransformer(tf.keras.callbacks.Callback):
         seq_length,
         tokenizer,
         start_string=".",
-        num_generate=300,
+        num_generate=1000,
     ):
         super().__init__()
         # Store the OneStep model instance (important: pass the instance, not the class)
@@ -297,7 +311,7 @@ class GenerateTextCallbackTransformer(tf.keras.callbacks.Callback):
             words.append(self.idx2word[int(token_id)])
 
         # Join words to form the generated text
-        result_text = " ".join(words)
+        result_text = join_words(words)
         print(result_text, "\n\n" + "_" * 80)
         file_writer = tf.summary.create_file_writer(self.log_dir)
         with file_writer.as_default():
@@ -341,9 +355,15 @@ def train(
     )
 
     # Create unique log directory for this run
-    log_dir = f"logs/fit/{model_name}/" + datetime.datetime.now().strftime(
-        "%Y%m%d-%H%M%S"
-    )
+    if model_name == "transformer":
+        log_dir = (
+            f"logs/fit/{model_name}_{num_layers}/"
+            + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        )
+    else:
+        log_dir = f"logs/fit/{model_name}/" + datetime.datetime.now().strftime(
+            "%Y%m%d-%H%M%S"
+        )
     tensorboard_callback = tf.keras.callbacks.TensorBoard(
         log_dir=log_dir,
         histogram_freq=1,  # Generate histograms of weights every epoch
@@ -465,8 +485,8 @@ def main():
     if args.model == "transformer":
         one_step_model = TransformerOneStep(model)
         next_token = torch_tokenizer.texts_to_sequences(["."])[0]
-        next_token = tf.constant(next_token)
-        result = [next_token]
+        next_token = tf.expand_dims(tf.constant(next_token), 1)
+        result = next_token
 
         for _ in range(1000):
             if len(result) > SEQ_LENGTH:
@@ -474,7 +494,9 @@ def main():
             else:
                 input_seq = result
             next_token = one_step_model.generate_one_step(input_seq)
-            result.append(next_token)
+            result = tf.concat([result, tf.expand_dims(next_token, 1)], axis=1)
+
+        token_ids = result.numpy()[0]
     else:
         one_step_model = OneStep(model)
         states = None
@@ -488,14 +510,15 @@ def main():
             )
             result.append(next_token)
 
+        token_ids = [tensor.numpy()[0] for tensor in result]
+
     # Convert token IDs back to words using index_word dictionary
-    token_ids = [tensor.numpy()[0] for tensor in result]
     words = []
     for token_id in token_ids:
         words.append(idx2word[int(token_id)])
 
     # Join words to form the generated text
-    result_text = " ".join(words)
+    result_text = join_words(words)
     print(result_text, "\n\n" + "_" * 80)
     file_writer = tf.summary.create_file_writer(log_dir)
     with file_writer.as_default():
