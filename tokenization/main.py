@@ -72,7 +72,7 @@ def load_text(kaggle_url, verbose=True):
         4: set(tf.strings.ngrams(tf.constant([all_words]), 4).numpy()[0]),
     }
 
-    return text, unique_words, ngrams
+    return text, all_words, unique_words, ngrams
 
 
 def percentage_ngrams(sample, ngrams):
@@ -438,7 +438,7 @@ def main():
 
     idx2word = torch_tokenizer.index_word
 
-    text, _, ngrams = load_text("shubhammaindola/harry-potter-books")
+    text, _, _, ngrams = load_text("shubhammaindola/harry-potter-books")
 
     (
         train_dataset,

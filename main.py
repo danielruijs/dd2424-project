@@ -27,7 +27,8 @@ D_MODEL = 512
 DFF = 2048
 NUM_HEADS = 12
 
-mixed_precision.set_global_policy('float32')
+mixed_precision.set_global_policy("float32")
+
 
 def load_text(kaggle_url, verbose=True):
     # Download latest version
@@ -98,7 +99,9 @@ def split_input_target(sequence):
     return input_text, target_text
 
 
-def create_dataset(text, train_split=0.8, val_split=0.1, batch_size=32, seq_length=100, verbose=True):
+def create_dataset(
+    text, train_split=0.8, val_split=0.1, batch_size=32, seq_length=100, verbose=True
+):
     """
     Splits the text into training, validation, and test datasets.
     train_split: proportion of data to use for training.
@@ -166,7 +169,16 @@ def create_dataset(text, train_split=0.8, val_split=0.1, batch_size=32, seq_leng
 
 
 def create_model(
-    model_name, vocab_size, train_dataset, learning_rate, hidden_units, num_layers, d_model, dff, num_heads, verbose=True
+    model_name,
+    vocab_size,
+    train_dataset,
+    learning_rate,
+    hidden_units,
+    num_layers,
+    d_model,
+    dff,
+    num_heads,
+    verbose=True,
 ):
     if model_name == "rnn":
         model = BaseRNN(vocab_size, hidden_units)
@@ -175,9 +187,7 @@ def create_model(
     elif model_name == "lstm2":
         model = LSTM2(vocab_size, hidden_units)
     elif model_name == "transformer":
-        model = Transformer(
-            vocab_size, num_layers, d_model, dff, num_heads
-        )
+        model = Transformer(vocab_size, num_layers, d_model, dff, num_heads)
 
     loss = tf.losses.SparseCategoricalCrossentropy(from_logits=True)
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
@@ -239,7 +249,13 @@ class GenerateTextCallback(tf.keras.callbacks.Callback):
 
 class GenerateTextCallbackTransformer(tf.keras.callbacks.Callback):
     def __init__(
-        self, one_step_model, log_dir, ngrams, seq_length, start_string=".", num_generate=300
+        self,
+        one_step_model,
+        log_dir,
+        ngrams,
+        seq_length,
+        start_string=".",
+        num_generate=300,
     ):
         super().__init__()
         # Store the OneStep model instance (important: pass the instance, not the class)
@@ -258,7 +274,7 @@ class GenerateTextCallbackTransformer(tf.keras.callbacks.Callback):
         for _ in range(self.num_generate):
             generated_seq = tf.constant([result_text])
             if len(result_text) > self.seq_length:
-                input_text = result_text[-self.seq_length:]
+                input_text = result_text[-self.seq_length :]
                 input_seq = tf.constant([input_text])
             else:
                 input_seq = generated_seq
@@ -293,9 +309,9 @@ def train(
     hyperparameter_tuning=False,
     learning_rate=0.001,
     hidden_units=1024,
-    num_layers=1, 
+    num_layers=1,
     d_model=512,
-    dff=2048, 
+    dff=2048,
     num_heads=8,
 ):
     model = create_model(
@@ -304,9 +320,9 @@ def train(
         train_dataset,
         learning_rate=learning_rate,
         hidden_units=hidden_units,
-        num_layers=num_layers, 
-        d_model=d_model, 
-        dff=dff, 
+        num_layers=num_layers,
+        d_model=d_model,
+        dff=dff,
         num_heads=num_heads,
         verbose=not hyperparameter_tuning,
     )
@@ -343,7 +359,10 @@ def train(
 
     if model_name == "transformer":
         generate_text_callback = GenerateTextCallbackTransformer(
-            one_step_model_for_callback, log_dir=log_dir, ngrams=ngrams, seq_length=seq_length
+            one_step_model_for_callback,
+            log_dir=log_dir,
+            ngrams=ngrams,
+            seq_length=seq_length,
         )
     else:
         generate_text_callback = GenerateTextCallback(
