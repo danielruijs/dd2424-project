@@ -159,10 +159,9 @@ class TransformerOneStep(keras.Model):
         self.temperature = temperature
         self.model = model
 
-    @tf.function
+    @tf.function(reduce_retracing=True)
     def generate_one_step(self, input_ids):
         # Run the model.
-        # predicted_logits.shape is [batch, char, next_char_logits]
         predicted_logits = self.model(x=input_ids)
         # Only use the last prediction.
         predicted_logits = predicted_logits[:, -1, :]
