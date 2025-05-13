@@ -1,6 +1,7 @@
 # Inspired by https://huggingface.co/learn/llm-course/chapter6/5
 
 import os
+import pickle
 from main import load_text
 
 # Suppress TensorFlow Info messages
@@ -106,6 +107,14 @@ def main():
 
     print("Final vocabulary:", vocab)
     print("Final vocabulary size:", len(vocab))
+
+    # Save splits and vocab to files
+    with open("vocab.pkl", "wb") as f:
+        pickle.dump(vocab, f)
+
+    # Save splits
+    with open("splits.pkl", "wb") as f:
+        pickle.dump(splits, f)
 
 
 if __name__ == "__main__":
