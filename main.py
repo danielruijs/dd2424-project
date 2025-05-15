@@ -15,17 +15,18 @@ from models import BaseRNN, LSTM, LSTM2, OneStep
 from transformer_model import Transformer, TransformerOneStep
 import re
 
-BATCH_SIZE = 32
-BUFFER_SIZE = 10000
-EPOCHS = 20
-SEQ_LENGTH = 300
+BATCH_SIZE = 64
 LR = 0.001
 HIDDEN_UNITS = 1024
+SEQ_LENGTH = 300
 # For transformer
 NUM_LAYERS = 2
-D_MODEL = 512
-DFF = 2048
+D_MODEL = 256
+DFF = 1024
 NUM_HEADS = 12
+
+EPOCHS = 20
+BUFFER_SIZE = 10000
 
 mixed_precision.set_global_policy("float32")
 
@@ -207,7 +208,7 @@ def create_model(
 
 class GenerateTextCallback(tf.keras.callbacks.Callback):
     def __init__(
-        self, one_step_model, log_dir, ngrams, start_string=".", num_generate=300
+        self, one_step_model, log_dir, ngrams, start_string=".", num_generate=1000
     ):
         super().__init__()
         # Store the OneStep model instance (important: pass the instance, not the class)
@@ -255,7 +256,7 @@ class GenerateTextCallbackTransformer(tf.keras.callbacks.Callback):
         ngrams,
         seq_length,
         start_string=".",
-        num_generate=300,
+        num_generate=1000,
     ):
         super().__init__()
         # Store the OneStep model instance (important: pass the instance, not the class)
@@ -328,9 +329,15 @@ def train(
     )
 
     # Create unique log directory for this run
-    log_dir = f"logs/fit/{model_name}/" + datetime.datetime.now().strftime(
-        "%Y%m%d-%H%M%S"
-    )
+    if model_name == "transformer":
+        log_dir = (
+            f"logs/fit/{model_name}_{num_layers}/"
+            + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        )
+    else:
+        log_dir = f"logs/fit/{model_name}/" + datetime.datetime.now().strftime(
+            "%Y%m%d-%H%M%S"
+        )
     tensorboard_callback = tf.keras.callbacks.TensorBoard(
         log_dir=log_dir,
         histogram_freq=1,  # Generate histograms of weights every epoch
@@ -405,7 +412,7 @@ def main():
         vocab_size,
         ids_from_chars,
         chars_from_ids,
-    ) = create_dataset(text, batch_size=BATCH_SIZE)
+    ) = create_dataset(text, batch_size=BATCH_SIZE, seq_length=SEQ_LENGTH)
 
     model, _, log_dir, best_checkpoint_filepath = train(
         args.model,
