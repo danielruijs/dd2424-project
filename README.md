@@ -1,6 +1,6 @@
-# Comparing RNN, LSTM, and Transformer Architectures for Character-Level Generation of Harry Potter Text
+# Comparing RNN, LSTM, and Transformer Architectures for Generation of Harry Potter Text
 
-This is a project in the course DD2424 Deep Learning in Data Science at KTH Royal Institute of Technology. The goal of this project is to compare the performance of different neural network architectures (RNN, LSTM, and Transformer) for character-level generation of text from the Harry Potter series.
+This is a project in the course DD2424 Deep Learning in Data Science at KTH Royal Institute of Technology. This project compares the performance of different neural network architectures (RNN, LSTM, and Transformer) for generation of text from the Harry Potter series.
 
 ## Packages
 
