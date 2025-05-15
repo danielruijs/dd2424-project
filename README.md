@@ -12,9 +12,16 @@ To remove packages, run the following command in the terminal:
 ```bash
 uv remove <package_name>
 ```
-To run a python script, run the following command in the terminal:
+To run a the scripts in this repository run:
 ```bash
-uv run <script_name.py>
+uv sync
+```
+Then activate the virtual environment with:
+```bash
+# On Windows
+source .venv/Scripts/activate
+# On Linux/MacOS
+source .venv/bin/activate
 ```
 
 ## Training
