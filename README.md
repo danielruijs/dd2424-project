@@ -2,6 +2,8 @@
 
 This is a project in the course DD2424 Deep Learning in Data Science at KTH Royal Institute of Technology. This project compares the performance of different neural network architectures (RNN, LSTM, and Transformer) for generation of text from the Harry Potter series.
 
+The project report can be found [here](./DD2424_project_MKvist_DRuijs.pdf).
+
 ## Packages
 
 [UV](https://docs.astral.sh/uv/getting-started/) is used for this project. To add packages, run the following command in the terminal:
